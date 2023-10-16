@@ -1,13 +1,14 @@
 package com.example.mobile_app;
 
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import android.Manifest;
+import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGattCharacteristic;
-import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.BluetoothGattServer;
 import android.bluetooth.BluetoothGattServerCallback;
 import android.bluetooth.BluetoothGattService;
@@ -17,8 +18,10 @@ import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
@@ -27,6 +30,14 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import net.openid.appauth.AuthorizationException;
+import net.openid.appauth.AuthorizationRequest;
+import net.openid.appauth.AuthorizationResponse;
+import net.openid.appauth.AuthorizationService;
+import net.openid.appauth.AuthorizationServiceConfiguration;
+import net.openid.appauth.ResponseTypeValues;
+import net.openid.appauth.TokenResponse;
 
 import java.util.UUID;
 
@@ -59,10 +70,11 @@ public class DeviceConfigActivity extends AppCompatActivity {
     private EditText pwInput;
 
     // Buttons
-    private Button connectButton;
+    private Button wifiConnectButton;
+    private Button lichessLoginButton;
 
     // Text views
-    private TextView connectStatus;
+    private TextView wifiConnectStatus;
 
     private String ssid;
     boolean isConnected = false;
@@ -74,9 +86,12 @@ public class DeviceConfigActivity extends AppCompatActivity {
 
         ssidInput = findViewById(R.id.ssid);
         pwInput = findViewById(R.id.pw);
-        connectButton = findViewById(R.id.connectButton);
-        connectStatus = findViewById(R.id.connectStatus);
-        connectButton.setOnClickListener(connectWifiListener);
+        wifiConnectButton = findViewById(R.id.wifiConnectButton);
+        wifiConnectStatus = findViewById(R.id.wifiConnectStatus);
+        lichessLoginButton = findViewById(R.id.lichessLoginButton);
+
+        wifiConnectButton.setOnClickListener(connectWifiListener);
+        lichessLoginButton.setOnClickListener(loginLichessListener);
 
         btManager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
         btAdapter = btManager.getAdapter();
@@ -103,6 +118,47 @@ public class DeviceConfigActivity extends AppCompatActivity {
         bleScanner.startScan(bleScanCallback);
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+
+        AuthorizationResponse resp = AuthorizationResponse.fromIntent(intent);
+        if (resp != null) {
+            // authorization completed
+            AuthorizationService authService = new AuthorizationService(this);
+            authService.performTokenRequest(
+                    resp.createTokenExchangeRequest(),
+                    new AuthorizationService.TokenResponseCallback() {
+                        @Override
+                        public void onTokenRequestCompleted(
+                                TokenResponse resp, AuthorizationException ex) {
+                            if (resp != null) {
+                                // exchange succeeded
+                                String bearerToken = resp.accessToken;
+                                if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                                    // TODO: Consider calling
+                                    //    ActivityCompat#requestPermissions
+                                    // here to request the missing permissions, and then overriding
+                                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                    //                                          int[] grantResults)
+                                    // to handle the case where the user grants the permission. See the documentation
+                                    // for ActivityCompat#requestPermissions for more details.
+                                    return;
+                                }
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    bleServer.notifyCharacteristicChanged(bleDevice, bearerTokenChar, false, bearerToken.getBytes());
+                                }
+                            } else {
+                                Toast.makeText(getApplicationContext(), "Failed to authenticate", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    });
+        } else {
+            // Didn't authorize
+            Toast.makeText(this, "Failed to authenticate", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private final View.OnClickListener connectWifiListener = view -> {
         if (ActivityCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             // TODO: Consider calling
@@ -119,6 +175,35 @@ public class DeviceConfigActivity extends AppCompatActivity {
             bleServer.notifyCharacteristicChanged(bleDevice, ssidChar, false, ssid.getBytes());
             bleServer.notifyCharacteristicChanged(bleDevice, pwChar, false, pwInput.getText().toString().getBytes());
         }
+    };
+
+    private final View.OnClickListener loginLichessListener = view -> {
+        AuthorizationServiceConfiguration serviceConfig =
+                new AuthorizationServiceConfiguration(
+                        Uri.parse("https://lichess.org/oauth"), // authorization endpoint
+                        Uri.parse("https://lichess.org/api/token")); // token endpoint
+
+        AuthorizationRequest.Builder authRequestBuilder =
+                new AuthorizationRequest.Builder(
+                        serviceConfig, // the authorization service configuration
+                        "2", // the client ID, typically pre-registered and static
+                        ResponseTypeValues.CODE, // the response_type value: we want a code
+                        Uri.parse("com.example.mobileapp:/oauth2redirect")); // the redirect URI to which the auth response is sent
+
+
+        AuthorizationRequest authRequest = authRequestBuilder
+                .setScope("email:read preference:read challenge:read challenge:write challenge:bulk board:play bot:play")
+                .build();
+
+        AuthorizationService authService = new AuthorizationService(DeviceConfigActivity.this);
+
+        Intent intent = new Intent(this, DeviceConfigActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        authService.performAuthorizationRequest(
+                authRequest,
+                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_MUTABLE),
+                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_MUTABLE));
     };
 
     private ScanCallback bleScanCallback = new ScanCallback() {
@@ -220,30 +305,30 @@ public class DeviceConfigActivity extends AppCompatActivity {
             if (characteristic == ssidChar) {
                 if (value[0] == 0) {
                     ssid = "";
-                    connectStatus.setText("Please connect to wifi");
-                    connectStatus.setTextColor(Color.RED);
+                    wifiConnectStatus.setText("Please connect to wifi");
+                    wifiConnectStatus.setTextColor(Color.RED);
                 }
                 else {
                     ssid = value.toString();
-                    connectStatus.setText("Connected to " + ssid);
+                    wifiConnectStatus.setText("Connected to " + ssid);
                     isConnected = true;
-                    connectStatus.setTextColor(Color.GREEN);
+                    wifiConnectStatus.setTextColor(Color.GREEN);
                 }
             }
             else if (characteristic == connectedChar) {
                 isConnected = value[0] != 0;
                 if (isConnected) {
-                    connectStatus.setText("Connected to " + ssid);
-                    connectStatus.setTextColor(Color.GREEN);
+                    wifiConnectStatus.setText("Connected to " + ssid);
+                    wifiConnectStatus.setTextColor(Color.GREEN);
                 }
                 else {
                     if (ssid.isEmpty()) {
-                        connectStatus.setText("Please connect to wifi");
+                        wifiConnectStatus.setText("Please connect to wifi");
                     }
                     else {
-                        connectStatus.setText("Failed connecting to " + ssid);
+                        wifiConnectStatus.setText("Failed connecting to " + ssid);
                     }
-                    connectStatus.setTextColor(Color.RED);
+                    wifiConnectStatus.setTextColor(Color.RED);
                 }
             }
         }
