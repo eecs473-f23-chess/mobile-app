@@ -1,5 +1,6 @@
 package com.example.mobile_app;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -24,8 +25,14 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.util.Log;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -39,6 +46,7 @@ import net.openid.appauth.AuthorizationServiceConfiguration;
 import net.openid.appauth.ResponseTypeValues;
 import net.openid.appauth.TokenResponse;
 
+import java.lang.reflect.Array;
 import java.util.UUID;
 
 public class DeviceConfigActivity extends AppCompatActivity {
@@ -58,6 +66,12 @@ public class DeviceConfigActivity extends AppCompatActivity {
     private BluetoothGattService lichessService = new BluetoothGattService(LICHESS_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY);
     private BluetoothGattCharacteristic bearerTokenChar = new BluetoothGattCharacteristic(BEARER_TOKEN_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE);
 
+    // Game config service UUIDs
+    public static final UUID GAME_SERVICE_UUID = new UUID(0x00, 0x03);
+    public static final UUID TIME_CONTROL_CHAR_UUID = new UUID(0x00, 0x01);
+    private BluetoothGattService gameService = new BluetoothGattService(GAME_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY);
+    private BluetoothGattCharacteristic timeControlChar = new BluetoothGattCharacteristic(TIME_CONTROL_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE);
+
     // BLE
     private BluetoothManager btManager;
     private BluetoothAdapter btAdapter;
@@ -74,10 +88,13 @@ public class DeviceConfigActivity extends AppCompatActivity {
     private Button lichessLoginButton;
 
     // Text views
-    private TextView wifiConnectStatus;
+    private static TextView wifiConnectStatus;
+    private static AutoCompleteTextView timeControl;
 
-    private String ssid;
-    boolean isConnected = false;
+    // UI elements
+    private static String ssid = "";
+    private static boolean isConnected = false;
+    private static int timeControlIndex = 2;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -89,9 +106,11 @@ public class DeviceConfigActivity extends AppCompatActivity {
         wifiConnectButton = findViewById(R.id.wifiConnectButton);
         wifiConnectStatus = findViewById(R.id.wifiConnectStatus);
         lichessLoginButton = findViewById(R.id.lichessLoginButton);
+        timeControl = findViewById(R.id.timeControlSelect);
 
         wifiConnectButton.setOnClickListener(connectWifiListener);
         lichessLoginButton.setOnClickListener(loginLichessListener);
+        timeControl.setOnItemClickListener(timeControlClickListener);
 
         btManager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
         btAdapter = btManager.getAdapter();
@@ -113,10 +132,36 @@ public class DeviceConfigActivity extends AppCompatActivity {
         wifiService.addCharacteristic(pwChar);
         wifiService.addCharacteristic(connectedChar);
         lichessService.addCharacteristic(bearerTokenChar);
+        gameService.addCharacteristic(timeControlChar);
+
+        // Rest of the services are added in callback
         bleServer.addService(wifiService);
 
         bleScanner.startScan(bleScanCallback);
+        uiHandler.sendMessage(new Message());
     }
+
+    private static final Handler uiHandler = new Handler(Looper.getMainLooper()) {
+        @Override
+        public void handleMessage(@NonNull Message msg) {
+            if (isConnected) {
+                wifiConnectStatus.setText("Connected to " + ssid);
+                wifiConnectStatus.setTextColor(Color.GREEN);
+            }
+            else {
+                if (ssid.isEmpty()) {
+                    wifiConnectStatus.setText("Please connect to wifi");
+                }
+                else {
+                    wifiConnectStatus.setText("Failed connecting to " + ssid);
+                }
+                wifiConnectStatus.setTextColor(Color.RED);
+            }
+
+            timeControl.setText(timeControl.getAdapter().getItem(timeControlIndex).toString(), false);
+            super.handleMessage(msg);
+        }
+    };
 
     @Override
     protected void onNewIntent(Intent intent) {
@@ -206,6 +251,14 @@ public class DeviceConfigActivity extends AppCompatActivity {
                 PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_MUTABLE));
     };
 
+    private final AdapterView.OnItemClickListener timeControlClickListener = new AdapterView.OnItemClickListener() {
+        @Override
+        public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+            byte[] data = { (byte)(i) };
+            bleServer.notifyCharacteristicChanged(bleDevice, timeControlChar, false, data);
+        }
+    };
+
     private ScanCallback bleScanCallback = new ScanCallback() {
         @Override
         public void onScanResult(int callbackType, ScanResult result) {
@@ -269,6 +322,9 @@ public class DeviceConfigActivity extends AppCompatActivity {
             if (service.getUuid() == WIFI_SERVICE_UUID) {
                 bleServer.addService(lichessService);
             }
+            else if (service.getUuid() == LICHESS_SERVICE_UUID) {
+                bleServer.addService(gameService);
+            }
         }
 
         @Override
@@ -305,32 +361,16 @@ public class DeviceConfigActivity extends AppCompatActivity {
             if (characteristic == ssidChar) {
                 if (value[0] == 0) {
                     ssid = "";
-                    wifiConnectStatus.setText("Please connect to wifi");
-                    wifiConnectStatus.setTextColor(Color.RED);
                 }
                 else {
                     ssid = value.toString();
-                    wifiConnectStatus.setText("Connected to " + ssid);
-                    isConnected = true;
-                    wifiConnectStatus.setTextColor(Color.GREEN);
                 }
             }
             else if (characteristic == connectedChar) {
-                isConnected = value[0] != 0;
-                if (isConnected) {
-                    wifiConnectStatus.setText("Connected to " + ssid);
-                    wifiConnectStatus.setTextColor(Color.GREEN);
-                }
-                else {
-                    if (ssid.isEmpty()) {
-                        wifiConnectStatus.setText("Please connect to wifi");
-                    }
-                    else {
-                        wifiConnectStatus.setText("Failed connecting to " + ssid);
-                    }
-                    wifiConnectStatus.setTextColor(Color.RED);
-                }
+                isConnected = (value[0] != 0);
             }
+
+            uiHandler.sendMessage(new Message());
         }
 
         @Override
