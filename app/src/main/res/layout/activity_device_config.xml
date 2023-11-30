@@ -32,7 +32,7 @@
         android:id="@+id/textView3"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
+        android:layout_marginTop="24dp"
         android:text="Lichess Login"
         android:textSize="24sp"
         app:layout_constraintEnd_toEndOf="parent"
@@ -118,4 +118,39 @@
             android:inputType="none"
             app:simpleItems="@array/time_controls" />
     </com.google.android.material.textfield.TextInputLayout>
+
+    <RadioGroup
+        android:id="@+id/opponentType"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        app:layout_constraintEnd_toEndOf="@+id/timeControlText"
+        app:layout_constraintStart_toStartOf="@+id/timeControlText"
+        app:layout_constraintTop_toBottomOf="@+id/timeControlText">
+
+        <RadioButton
+            android:id="@+id/radioRandom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Random opponent" />
+
+        <RadioButton
+            android:id="@+id/radioSpecific"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Specific opponent" />
+
+    </RadioGroup>
+
+    <EditText
+        android:id="@+id/opponentUsername"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:ems="10"
+        android:hint="Username"
+        android:inputType="text"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="@+id/opponentType"
+        app:layout_constraintTop_toBottomOf="@+id/opponentType" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>
