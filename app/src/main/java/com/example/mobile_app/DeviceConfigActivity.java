@@ -69,10 +69,12 @@ public class DeviceConfigActivity extends AppCompatActivity {
     public static final UUID TIME_CONTROL_CHAR_UUID = new UUID(0x00, 0x01);
     public static final UUID OPPONENT_TYPE_CHAR_UUID = new UUID(0x00, 0x02);
     public static final UUID OPPONENT_USERNAME_CHAR_UUID = new UUID(0x00, 0x03);
+    public static final UUID BUTTON_CHAR_UUID = new UUID(0x00, 0x04);
     private BluetoothGattService gameService = new BluetoothGattService(GAME_SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY);
     private BluetoothGattCharacteristic timeControlChar = new BluetoothGattCharacteristic(TIME_CONTROL_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE);
     private BluetoothGattCharacteristic opponentTypeChar = new BluetoothGattCharacteristic(OPPONENT_TYPE_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE);
     private BluetoothGattCharacteristic opponentUsernameChar = new BluetoothGattCharacteristic(OPPONENT_USERNAME_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE);
+    private BluetoothGattCharacteristic buttonChar = new BluetoothGattCharacteristic(BUTTON_CHAR_UUID, BluetoothGattCharacteristic.PROPERTY_WRITE, BluetoothGattCharacteristic.PERMISSION_WRITE);
 
     // BLE
     private BluetoothManager btManager;
@@ -97,6 +99,12 @@ public class DeviceConfigActivity extends AppCompatActivity {
     // Radio group
     private static RadioGroup opponentType;
 
+    // Buttons
+    private Button makeGame;
+    private Button clock;
+    private Button draw;
+    private Button resign;
+
     // UI elements
     private static String ssid = "";
     private static boolean isConnected = false;
@@ -117,12 +125,20 @@ public class DeviceConfigActivity extends AppCompatActivity {
         timeControl = findViewById(R.id.timeControlSelect);
         opponentType = findViewById(R.id.opponentType);
         opponentUsernameInput = findViewById(R.id.opponentUsername);
+        makeGame = findViewById(R.id.makeGame);
+        clock = findViewById(R.id.clock);
+        draw = findViewById(R.id.draw);
+        resign = findViewById(R.id.resign);
 
         wifiConnectButton.setOnClickListener(connectWifiListener);
         lichessLoginButton.setOnClickListener(loginLichessListener);
         timeControl.setOnItemClickListener(timeControlClickListener);
         opponentType.setOnCheckedChangeListener(opponentTypeChangedListener);
         opponentUsernameInput.setOnFocusChangeListener(opponentUsernameListener);
+        makeGame.setOnClickListener(buttonOnClickListener);
+        clock.setOnClickListener(buttonOnClickListener);
+        draw.setOnClickListener(buttonOnClickListener);
+        resign.setOnClickListener(buttonOnClickListener);
         uiHandler.sendMessage(new Message());
 
         btManager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
@@ -148,6 +164,7 @@ public class DeviceConfigActivity extends AppCompatActivity {
         gameService.addCharacteristic(timeControlChar);
         gameService.addCharacteristic(opponentTypeChar);
         gameService.addCharacteristic(opponentUsernameChar);
+        gameService.addCharacteristic(buttonChar);
 
         // Rest of the services are added in callback
         bleServer.addService(wifiService);
@@ -310,6 +327,31 @@ public class DeviceConfigActivity extends AppCompatActivity {
             if (opponentTypeIndex == 1 && bleDevice != null) {
                 bleServer.notifyCharacteristicChanged(bleDevice, opponentUsernameChar, false, opponentUsernameInput.getText().toString().getBytes());
             }
+        }
+    };
+
+    private View.OnClickListener buttonOnClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View view) {
+            int val;
+            if (view == makeGame) {
+                val = 1;
+            }
+            else if (view == clock) {
+                val = 2;
+            }
+            else if (view == draw) {
+                val = 3;
+            }
+            else if (view == resign) {
+                val = 4;
+            }
+            else {
+                return;
+            }
+
+            byte []data = {(byte)(val)};
+            bleServer.notifyCharacteristicChanged(bleDevice, buttonChar, false, data);
         }
     };
 
