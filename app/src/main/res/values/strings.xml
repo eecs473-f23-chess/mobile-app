@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">OTB Online Chess</string>
+    <string name="tc_10d0">10 + 0</string>
+    <string name="tc_10d5">10 + 5</string>
+    <string name="tc_15d10">15 + 10</string>
+    <string name="tc_30d0">30 + 0</string>
+    <string name="tc_30d20">30 + 20</string>
 </resources>

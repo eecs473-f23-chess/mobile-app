@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="time_controls">
+        <item>@string/tc_10d0</item>
+        <item>@string/tc_10d5</item>
+        <item>@string/tc_15d10</item>
+        <item>@string/tc_30d0</item>
+        <item>@string/tc_30d20</item>
+    </string-array>
+</resources>
