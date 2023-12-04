@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import android.Manifest;
+import android.app.ActionBar;
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -13,6 +14,7 @@ import android.bluetooth.BluetoothGattServer;
 import android.bluetooth.BluetoothGattServerCallback;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothStatusCodes;
 import android.bluetooth.le.BluetoothLeScanner;
 import android.bluetooth.le.ScanCallback;
@@ -29,6 +31,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
@@ -36,6 +39,9 @@ import android.widget.EditText;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.google.android.material.progressindicator.CircularProgressIndicator;
+import com.google.android.material.textfield.TextInputLayout;
 
 import net.openid.appauth.AuthorizationException;
 import net.openid.appauth.AuthorizationRequest;
@@ -82,32 +88,35 @@ public class DeviceConfigActivity extends AppCompatActivity {
     private BluetoothLeScanner bleScanner;
     private BluetoothGattServer bleServer;
     private BluetoothDevice bleDevice;
+    private static CircularProgressIndicator progressIndicator;
 
     // Text input
-    private EditText ssidInput;
-    private EditText pwInput;
+    private static EditText ssidInput;
+    private static EditText pwInput;
     private static EditText opponentUsernameInput;
 
     // Buttons
-    private Button wifiConnectButton;
-    private Button lichessLoginButton;
+    private static Button wifiConnectButton;
+    private static Button lichessLoginButton;
 
     // Text views
     private static TextView wifiConnectStatus;
     private static AutoCompleteTextView timeControl;
+    private static TextInputLayout timeControlText;
 
     // Radio group
     private static RadioGroup opponentType;
 
     // Buttons
-    private Button makeGame;
-    private Button clock;
-    private Button draw;
-    private Button resign;
+    private static Button makeGame;
+    private static Button clock;
+    private static Button draw;
+    private static Button resign;
 
     // UI elements
     private static String ssid = "";
-    private static boolean isConnected = false;
+    private static boolean isWifiConnected = false;
+    private static boolean isBleConnected = false;
     private static int timeControlIndex = 2;
     private static int opponentTypeIndex = 0;
     private static String opponentUsername = "";
@@ -123,12 +132,14 @@ public class DeviceConfigActivity extends AppCompatActivity {
         wifiConnectStatus = findViewById(R.id.wifiConnectStatus);
         lichessLoginButton = findViewById(R.id.lichessLoginButton);
         timeControl = findViewById(R.id.timeControlSelect);
+        timeControlText = findViewById(R.id.timeControlText);
         opponentType = findViewById(R.id.opponentType);
         opponentUsernameInput = findViewById(R.id.opponentUsername);
         makeGame = findViewById(R.id.makeGame);
         clock = findViewById(R.id.clock);
         draw = findViewById(R.id.draw);
         resign = findViewById(R.id.resign);
+        progressIndicator = findViewById(R.id.progressIndicator);
 
         wifiConnectButton.setOnClickListener(connectWifiListener);
         lichessLoginButton.setOnClickListener(loginLichessListener);
@@ -175,32 +186,55 @@ public class DeviceConfigActivity extends AppCompatActivity {
     private static final Handler uiHandler = new Handler(Looper.getMainLooper()) {
         @Override
         public void handleMessage(@NonNull Message msg) {
-            if (isConnected) {
-                wifiConnectStatus.setText("Connected to " + ssid);
-                wifiConnectStatus.setTextColor(Color.GREEN);
+            if (isBleConnected) {
+                progressIndicator.hide();
             }
             else {
-                if (ssid.isEmpty()) {
-                    wifiConnectStatus.setText("Please connect to wifi");
-                }
-                else {
-                    wifiConnectStatus.setText("Failed connecting to " + ssid);
-                }
-                wifiConnectStatus.setTextColor(Color.RED);
+                progressIndicator.show();
             }
 
-            Log.e("Donkey", "" + timeControlIndex);
-            timeControl.setText(timeControl.getAdapter().getItem(timeControlIndex).toString(), false);
+            progressIndicator.setVisibility(isBleConnected ? View.INVISIBLE : View.VISIBLE);
+            ssidInput.setEnabled(isBleConnected);
+            pwInput.setEnabled(isBleConnected);
+            wifiConnectButton.setEnabled(isBleConnected);
+            lichessLoginButton.setEnabled(isBleConnected);
+            timeControl.setEnabled(isBleConnected);
+            timeControlText.setEnabled(isBleConnected);
+            opponentType.setEnabled(isBleConnected);
+            for (int i = 0; i < opponentType.getChildCount(); ++i) {
+                opponentType.getChildAt(i).setEnabled(isBleConnected);
+            }
+            opponentUsernameInput.setEnabled(isBleConnected);
+            makeGame.setEnabled(isBleConnected);
+            clock.setEnabled(isBleConnected);
+            draw.setEnabled(isBleConnected);
+            resign.setEnabled(isBleConnected);
 
-            if (opponentTypeIndex == 0) {
-                opponentUsernameInput.setEnabled(false);
-                opponentType.check(R.id.radioRandom);
+            if (isBleConnected) {
+                if (isWifiConnected) {
+                    wifiConnectStatus.setText("Connected to " + ssid);
+                    wifiConnectStatus.setTextColor(Color.GREEN);
+                } else {
+                    if (ssid.isEmpty()) {
+                        wifiConnectStatus.setText("Please connect to wifi");
+                    } else {
+                        wifiConnectStatus.setText("Failed connecting to " + ssid);
+                    }
+                    wifiConnectStatus.setTextColor(Color.RED);
+                }
+
+                Log.e("Donkey", "" + timeControlIndex);
+                timeControl.setText(timeControl.getAdapter().getItem(timeControlIndex).toString(), false);
+
+                if (opponentTypeIndex == 0) {
+                    opponentUsernameInput.setEnabled(false);
+                    opponentType.check(R.id.radioRandom);
+                } else if (opponentTypeIndex == 1) {
+                    opponentUsernameInput.setEnabled(true);
+                    opponentType.check(R.id.radioSpecific);
+                }
+                opponentUsernameInput.setText(opponentUsername);
             }
-            else if (opponentTypeIndex == 1) {
-                opponentUsernameInput.setEnabled(true);
-                opponentType.check(R.id.radioSpecific);
-            }
-            opponentUsernameInput.setText(opponentUsername);
             super.handleMessage(msg);
         }
     };
@@ -406,9 +440,16 @@ public class DeviceConfigActivity extends AppCompatActivity {
                 return;
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                BluetoothGattService service = bleServer.getService(WIFI_SERVICE_UUID);
-                BluetoothGattCharacteristic characteristic = service.getCharacteristic(SSID_CHAR_UUID);
-                Toast.makeText(getApplicationContext(), "Paired with board", Toast.LENGTH_SHORT).show();
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    isBleConnected = true;
+                }
+                else {
+                    isBleConnected = false;
+                    bleServer.close();
+                    Intent intent = new Intent(getApplicationContext(), MainActivity.class);
+                    startActivity(intent);
+                }
+                uiHandler.sendMessage(new Message());
             }
         }
 
@@ -473,7 +514,7 @@ public class DeviceConfigActivity extends AppCompatActivity {
                 }
             }
             else if (characteristic == connectedChar) {
-                isConnected = (value[0] != 0);
+                isWifiConnected = (value[0] != 0);
             }
             else if (characteristic == timeControlChar) {
                 timeControlIndex = value[0];
